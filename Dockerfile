@@ -1,48 +1,56 @@
 # ===========================
-# Stage 1: Dependencies
-# ===========================
-FROM node:20-alpine AS deps
-WORKDIR /app
-
-# Copy package files and install dependencies
-COPY package*.json ./
-RUN npm ci
-
-# ===========================
-# Stage 2: Build
+# 1️⃣ Stage 1: Build Stage
 # ===========================
 FROM node:20-alpine AS builder
+
+# ตั้ง working directory
 WORKDIR /app
 
-# Copy dependency modules from previous stage
-COPY --from=deps /app/node_modules ./node_modules
+# Copy package.json และ lockfile ก่อน
+COPY package*.json ./
+
+# ติดตั้ง dependencies
+RUN npm ci
+
+# Copy Prisma schema และ generate client
+COPY prisma ./prisma/
+RUN npx prisma generate
+
+# Copy source code ทั้งหมด
 COPY . .
 
-# ✅ Disable ESLint during build to avoid CI errors
-ENV NEXT_DISABLE_ESLINT=1
-
-# (Alternative if you use Yarn)
-# RUN yarn build
+# Build Next.js app
 RUN npm run build
 
+
 # ===========================
-# Stage 3: Production Image
+# 2️⃣ Stage 2: Production Stage
 # ===========================
 FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV PORT=3000
 
-# Copy only the necessary files from builder
-COPY --from=builder /app/public ./public
+# Copy package.json เพื่อใช้เฉพาะ production dependencies
+COPY package*.json ./
+
+# ติดตั้งเฉพาะ production dependencies
+RUN npm ci --only=production
+
+# Copy Prisma client ที่ generate แล้วจาก builder
+COPY --from=builder /app/node_modules/.prisma /app/node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma /app/node_modules/@prisma
+
+# Copy build output
 COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/next.config.* ./
 COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
 
-# If you use Next.js 13+ app directory, add this (optional)
-# COPY --from=builder /app/next.config.js ./
-
+# Expose port
 EXPOSE 3000
 
-# Default command
+# Start app
 CMD ["npm", "run", "start"]
