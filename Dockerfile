@@ -9,9 +9,10 @@ FROM node:20-bullseye AS builder
 WORKDIR /app
 COPY . .
 COPY --from=deps /app/node_modules ./node_modules
-RUN npm run build -- --eslint-disable
+RUN npm run build --eslint-disable
 
 # Stage 3: Run the app
+#
 FROM node:20-bullseye AS runner
 WORKDIR /app
 ENV NODE_ENV=production
